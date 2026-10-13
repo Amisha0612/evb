@@ -4,8 +4,8 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/d3ltmeshQ/evb/internal/models"
-	"github.com/d3ltmeshQ/evb/pkg/config"
+	"github.com/Amisha0612/evb/internal/models"
+	"github.com/Amisha0612/evb/pkg/config"
 )
 
 type Controller interface {
@@ -20,7 +20,7 @@ type pipe struct {
 	queue chan *models.StitchedEvent
 }
 
-func New(ctx context.Context, cfg *config.GoDotEnvProvider) Controller {
+func New(_ context.Context, cfg *config.GoDotEnvProvider) Controller {
 	queueSize, err := strconv.Atoi(cfg.Get("QUEUE_SIZE"))
 	if err != nil {
 		queueSize = 1000

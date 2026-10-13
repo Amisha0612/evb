@@ -5,16 +5,16 @@ import (
 	"sync"
 )
 
-func NewMockLogger(output io.Writer) *logger {
-	return &logger{
+func NewMockLogger(output io.Writer) *Logger {
+	return &Logger{
 		out:   output,
 		level: getLevel("DEBUG"),
 		mutex: &sync.RWMutex{},
 	}
 }
 
-func NewMockLoggerWithCorrID(output io.Writer, correlationID string) *logger {
-	return &logger{
+func NewMockLoggerWithCorrID(output io.Writer, _ string) *Logger {
+	return &Logger{
 		out:   output,
 		level: getLevel("DEBUG"),
 		mutex: &sync.RWMutex{},

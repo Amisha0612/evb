@@ -14,8 +14,9 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/d3ltmeshQ/evb/pkg/logger"
 	"github.com/joho/godotenv"
+
+	"github.com/Amisha0612/evb/pkg/logger"
 )
 
 // Client defines the Pub/Sub interface
@@ -132,7 +133,7 @@ func NewClient() (Client, error) {
 	// Create ConsumerGroup
 	consumer, err := sarama.NewConsumerGroup(brokers, groupID, config)
 	if err != nil {
-		producer.Close()
+		_ = producer.Close()
 		return nil, err
 	}
 
@@ -193,7 +194,7 @@ func (k *KafkaClient) Ping() error {
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Refresh metadata for topics
 	if err := client.RefreshMetadata(k.topics...); err != nil {
@@ -239,8 +240,9 @@ func (k *KafkaClient) Close() error {
 	}
 	k.closed = true
 	close(k.msgChan)
-	k.producer.Close()
-	return k.consumer.Close()
+	producerErr := k.producer.Close()
+
+	return errors.Join(producerErr, k.consumer.Close())
 }
 
 // consumerGroupHandler forwards messages to msgChan

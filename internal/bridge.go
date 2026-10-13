@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/d3ltmeshQ/evb/internal/queue"
-	"github.com/d3ltmeshQ/evb/internal/relay"
-	"github.com/d3ltmeshQ/evb/internal/stitching"
-	"github.com/d3ltmeshQ/evb/internal/validation"
-	"github.com/d3ltmeshQ/evb/pkg/config"
-	"github.com/d3ltmeshQ/evb/pkg/logger"
+
+	"github.com/Amisha0612/evb/internal/queue"
+	"github.com/Amisha0612/evb/internal/relay"
+	"github.com/Amisha0612/evb/internal/stitching"
+	"github.com/Amisha0612/evb/internal/validation"
+	"github.com/Amisha0612/evb/pkg/config"
+	"github.com/Amisha0612/evb/pkg/logger"
 )
 
 type bridge struct {
@@ -45,11 +46,6 @@ func (b *bridge) Process(ctx context.Context, msg *sarama.ConsumerMessage) {
 		return
 	}
 
-	// if err := ctx.PubSub.Ping(); err != nil {
-	// 	logger.Error("ping failed! error : [%v]", err)
-	// 	return
-	// }
-
 	event, err := b.validate.Validator(ctx, msg)
 	if err != nil {
 		logger.Errorf("validation failed! error : [%v]", err)
@@ -62,14 +58,7 @@ func (b *bridge) Process(ctx context.Context, msg *sarama.ConsumerMessage) {
 		b.pipe.Enqueue(stitchedEvent)
 	}
 
-	defer func() {
-		//TODO: Refactor
-		// ctx.PubSub.CommitOffset(pubsub.TopicPartition{
-		// 	Topic:     msg.Topic,
-		// 	Partition: msg.Partition,
-		// 	Offset:    msg.Offset,
-		// })
-	}()
+	// TODO: commit the Kafka offset once the event has been processed.
 }
 
 func (b *bridge) relayWorker(ctx context.Context) {
@@ -81,6 +70,8 @@ func (b *bridge) relayWorker(ctx context.Context) {
 			return
 		}
 
-		b.relay.Transport(ctx, b.pipe.Dequeue())
+		if err := b.relay.Transport(ctx, b.pipe.Dequeue()); err != nil {
+			logger.Errorf("relay failed! error : [%v]", err)
+		}
 	}
 }

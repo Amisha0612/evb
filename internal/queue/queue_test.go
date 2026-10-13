@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/d3ltmeshQ/evb/internal/models"
-	"github.com/d3ltmeshQ/evb/pkg/config"
+	"github.com/Amisha0612/evb/internal/models"
+	"github.com/Amisha0612/evb/pkg/config"
 )
 
 func TestNew(t *testing.T) {

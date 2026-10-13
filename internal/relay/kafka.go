@@ -5,8 +5,9 @@ import (
 	"errors"
 
 	"github.com/IBM/sarama"
-	"github.com/d3ltmeshQ/evb/pkg/logger"
 	"github.com/google/uuid"
+
+	"github.com/Amisha0612/evb/pkg/logger"
 )
 
 type kafka struct {
@@ -51,21 +52,7 @@ func newKafkaProducer(obj *kafka) kafkaController {
 		Backend:        obj.Backend,
 	}
 
-	// cfg := &models.Config{
-	// 	Brokers: strings.Join(k.Hosts, ","),
-	// 	Topics:  k.Topics,
-	// 	SASL: models.SASLConfig{
-	// 		User:     k.Username,
-	// 		Password: k.Password,
-	// 	},
-	// }
-
-	// producer, err := kfk.NewKafkaProducer(cfg)
-	// if err != nil {
-	// 	return nil
-	// }
-
-	// k.producer = producer
+	// TODO: create the sarama SyncProducer here; k.producer is nil until then.
 
 	return k
 }
@@ -74,7 +61,7 @@ func (k *kafka) GetID() string {
 	return k.id
 }
 
-func (k *kafka) Transport(ctx context.Context, payload any) (any, error) {
+func (k *kafka) Transport(_ context.Context, _ any) (any, error) {
 	errs := []error{}
 
 	for _, topic := range k.Topics {
@@ -98,7 +85,7 @@ func (k *kafka) Transport(ctx context.Context, payload any) (any, error) {
 }
 
 func (k *kafka) saramaHeader() []sarama.RecordHeader {
-	headers := []sarama.RecordHeader{}
+	headers := make([]sarama.RecordHeader, 0, len(k.HeaderList))
 
 	for _, header := range k.HeaderList {
 		headers = append(headers, sarama.RecordHeader{

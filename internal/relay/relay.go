@@ -4,9 +4,10 @@ import (
 	"context"
 	"os"
 
-	"github.com/d3ltmeshQ/evb/internal/models"
-	"github.com/d3ltmeshQ/evb/pkg/logger"
 	"gopkg.in/yaml.v2"
+
+	"github.com/Amisha0612/evb/internal/models"
+	"github.com/Amisha0612/evb/pkg/logger"
 )
 
 type Controller interface {
@@ -39,7 +40,7 @@ type relay struct {
 	blobSinks  map[string][]blobController
 }
 
-func New(ctx context.Context, configPath string) Controller {
+func New(_ context.Context, configPath string) Controller {
 	r := &relay{
 		configs:    sinkConfig{},
 		httpSinks:  make(map[string][]httpController),
@@ -68,10 +69,12 @@ func New(ctx context.Context, configPath string) Controller {
 		return nil
 	}
 
-	for _, s := range buffer.Config.Servers {
+	for si := range buffer.Config.Servers {
+		s := &buffer.Config.Servers[si]
+
 		httpCtrl := make([]httpController, 0, len(s.Sinks.HTTPS))
 		for i := range s.Sinks.HTTPS {
-			httpCtrl = append(httpCtrl, newHTTPS(s.Sinks.HTTPS[i]))
+			httpCtrl = append(httpCtrl, newHTTPS(&s.Sinks.HTTPS[i]))
 		}
 
 		r.httpSinks[s.Name] = httpCtrl
@@ -79,7 +82,7 @@ func New(ctx context.Context, configPath string) Controller {
 
 		blobCtrl := make([]blobController, 0, len(s.Sinks.Blob))
 		for i := range s.Sinks.Blob {
-			blobCtrl = append(blobCtrl, newBlob(s.Sinks.Blob[i]))
+			blobCtrl = append(blobCtrl, newBlob(&s.Sinks.Blob[i]))
 		}
 
 		r.blobSinks[s.Name] = blobCtrl

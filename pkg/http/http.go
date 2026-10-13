@@ -7,22 +7,22 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/d3ltmeshQ/evb/internal/models"
+	"github.com/Amisha0612/evb/internal/models"
 )
 
-type HttpClientWrapper struct {
+type ClientWrapper struct {
 	baseURL string
 	client  *http.Client
 }
 
-func NewHTTPClient(baseURL string, client *http.Client) *HttpClientWrapper {
-	return &HttpClientWrapper{
+func NewHTTPClient(baseURL string, client *http.Client) *ClientWrapper {
+	return &ClientWrapper{
 		baseURL: baseURL,
 		client:  client,
 	}
 }
 
-func (h *HttpClientWrapper) buildURL(api string, params map[string]interface{}) string {
+func (h *ClientWrapper) buildURL(api string, params map[string]interface{}) string {
 	u, _ := url.Parse(h.baseURL + api)
 	q := u.Query()
 	for k, v := range params {
@@ -32,7 +32,7 @@ func (h *HttpClientWrapper) buildURL(api string, params map[string]interface{}) 
 	return u.String()
 }
 
-func (h *HttpClientWrapper) doRequest(ctx context.Context, method, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
+func (h *ClientWrapper) doRequest(ctx context.Context, method, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, h.buildURL(api, params), bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func (h *HttpClientWrapper) doRequest(ctx context.Context, method, api string, p
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -59,23 +59,23 @@ func (h *HttpClientWrapper) doRequest(ctx context.Context, method, api string, p
 	}, nil
 }
 
-func (h *HttpClientWrapper) GetWithHeaders(ctx context.Context, api string, params map[string]interface{}, headers map[string]string) (*models.Response, error) {
+func (h *ClientWrapper) GetWithHeaders(ctx context.Context, api string, params map[string]interface{}, headers map[string]string) (*models.Response, error) {
 	return h.doRequest(ctx, http.MethodGet, api, params, nil, headers)
 }
 
-func (h *HttpClientWrapper) PostWithHeaders(ctx context.Context, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
+func (h *ClientWrapper) PostWithHeaders(ctx context.Context, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
 	return h.doRequest(ctx, http.MethodPost, api, params, body, headers)
 }
 
-func (h *HttpClientWrapper) PutWithHeaders(ctx context.Context, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
+func (h *ClientWrapper) PutWithHeaders(ctx context.Context, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
 	return h.doRequest(ctx, http.MethodPut, api, params, body, headers)
 }
 
-func (h *HttpClientWrapper) DeleteWithHeaders(ctx context.Context, api string, body []byte, headers map[string]string) (*models.Response, error) {
+func (h *ClientWrapper) DeleteWithHeaders(ctx context.Context, api string, body []byte, headers map[string]string) (*models.Response, error) {
 	return h.doRequest(ctx, http.MethodDelete, api, nil, body, headers)
 }
 
-func (h *HttpClientWrapper) PatchWithHeaders(ctx context.Context, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
+func (h *ClientWrapper) PatchWithHeaders(ctx context.Context, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
 	return h.doRequest(ctx, http.MethodPatch, api, params, body, headers)
 }
 

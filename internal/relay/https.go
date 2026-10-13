@@ -6,10 +6,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/d3ltmeshQ/evb/pkg/http"
-	"github.com/d3ltmeshQ/evb/pkg/logger"
 	"github.com/google/uuid"
 	"golang.org/x/oauth2/clientcredentials"
+
+	"github.com/Amisha0612/evb/pkg/http"
+	"github.com/Amisha0612/evb/pkg/logger"
 )
 
 type oAuth struct {
@@ -24,7 +25,7 @@ type param struct {
 }
 
 type https struct {
-	client  *http.HttpClientWrapper
+	client  *http.ClientWrapper
 	id      string
 	URL     string            `yaml:"url"`
 	Path    string            `yaml:"path"`
@@ -39,7 +40,7 @@ type httpController interface {
 	Transport(context.Context, any) (any, error)
 }
 
-func newHTTPS(obj https) httpController {
+func newHTTPS(obj *https) httpController {
 	conf := &clientcredentials.Config{
 		ClientID:     obj.Auth.ClientID,
 		ClientSecret: obj.Auth.ClientSecret,

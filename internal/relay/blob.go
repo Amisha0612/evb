@@ -7,8 +7,9 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
-	"github.com/d3ltmeshQ/evb/pkg/logger"
 	"github.com/google/uuid"
+
+	"github.com/Amisha0612/evb/pkg/logger"
 )
 
 type blob struct {
@@ -26,7 +27,7 @@ type blobController interface {
 	Transport(context.Context, any) (any, error)
 }
 
-func newBlob(obj blob) blobController {
+func newBlob(obj *blob) blobController {
 	client, err := container.NewClientWithNoCredential(fmt.Sprintf("%s/%s%s", obj.ServiceURL, obj.ContainerName, obj.SasToken), nil)
 	if err != nil {
 		logger.Errorf("error initializing blob client for %s: %v", obj.AccountName, err)

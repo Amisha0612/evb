@@ -9,8 +9,6 @@ linters:
     - goconst
     - gocritic
     - gocyclo
-    - gofmt
-    - goimports
     - govet
     - ineffassign
     - misspell
@@ -35,14 +33,15 @@ linters:
         - style
     gocyclo:
       min-complexity: 15
-    goimports:
-      local-prefixes:
-        - github.com/d3ltmeshQ/evb
   exclusions:
     generated: lax
     presets:
       - comments
       - common-false-positives
+    rules:
+      - path: _test\.go
+        linters:
+          - goconst
     paths:
       - examples$
       - mocks$
@@ -53,7 +52,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/d3ltmeshQ/evb
+        - github.com/Amisha0612/evb
   exclusions:
     generated: lax
     paths:

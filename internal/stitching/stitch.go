@@ -6,9 +6,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/d3ltmeshQ/evb/internal/models"
-	"github.com/d3ltmeshQ/evb/pkg/config"
-	"github.com/d3ltmeshQ/evb/pkg/logger"
+	"github.com/Amisha0612/evb/internal/models"
+	"github.com/Amisha0612/evb/pkg/config"
+	"github.com/Amisha0612/evb/pkg/logger"
 )
 
 type Controller interface {
@@ -23,7 +23,7 @@ type stitch struct {
 	}
 }
 
-func New(ctx context.Context, cfg *config.GoDotEnvProvider) Controller {
+func New(_ context.Context, cfg *config.GoDotEnvProvider) Controller {
 	rulesetStr := cfg.Get("RULESET_MAP")
 
 	var rs map[string]string
@@ -46,7 +46,7 @@ func New(ctx context.Context, cfg *config.GoDotEnvProvider) Controller {
 }
 
 // nolint: gocognit,gocritic // logic can't be altered as simplifying it would reduce readability and correctness
-func (s *stitch) Aggregate(ctx context.Context, event *models.EventWrapper) *models.StitchedEvent {
+func (s *stitch) Aggregate(_ context.Context, event *models.EventWrapper) *models.StitchedEvent {
 	s.buffer.mu.Lock()
 	defer s.buffer.mu.Unlock()
 

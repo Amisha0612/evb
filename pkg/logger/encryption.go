@@ -11,6 +11,8 @@ import (
 	"sync"
 )
 
+const notConfigured = "[ENCRYPTOR_NOT_CONFIGURED]"
+
 type Encryptor interface {
 	Encrypt([]byte) (string, error)
 	KeyID() string
@@ -48,9 +50,9 @@ func Encrypted(data string) string {
 }
 
 // EncryptWithKeyID returns both the key ID and the encrypted value
-func EncryptWithKeyID(data string) (string, string) {
+func EncryptWithKeyID(data string) (keyID, encrypted string) {
 	if encryptedLogger == nil || encryptedLogger.encryptor == nil {
-		return "[ENCRYPTOR_NOT_CONFIGURED]", "[ENCRYPTOR_NOT_CONFIGURED]"
+		return notConfigured, notConfigured
 	}
 	return encryptedLogger.encryptor.KeyID(), encryptedLogger.Encrypt(data)
 }
@@ -60,7 +62,7 @@ func (e *EncryptedLogger) Encrypt(data string) string {
 	defer e.mutex.RUnlock()
 
 	if e.encryptor == nil {
-		return "[ENCRYPTOR_NOT_CONFIGURED]"
+		return notConfigured
 	}
 
 	encrypted, err := e.encryptor.Encrypt([]byte(data))
@@ -90,7 +92,7 @@ func NewRealEncryptor(keyID, keyStr string) Encryptor {
 
 func KeyID() string {
 	if encryptedLogger == nil || encryptedLogger.encryptor == nil {
-		return "[ENCRYPTOR_NOT_CONFIGURED]"
+		return notConfigured
 	}
 	return encryptedLogger.encryptor.KeyID()
 }
@@ -122,7 +124,7 @@ func (r *realEncryptor) KeyID() string {
 // Dummy encryptor
 type dummyEncryptor struct{}
 
-func (d *dummyEncryptor) Encrypt(data []byte) (string, error) {
+func (d *dummyEncryptor) Encrypt(_ []byte) (string, error) {
 	return "ENC", nil
 }
 

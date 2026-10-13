@@ -12,8 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/d3ltmeshQ/evb/pkg/logger"
-	"github.com/d3ltmeshQ/evb/pubsub"
+	"github.com/Amisha0612/evb/pkg/logger"
+	"github.com/Amisha0612/evb/pubsub"
 )
 
 func main() {
@@ -22,7 +22,7 @@ func main() {
 
 	psClient, err := pubsub.NewClient()
 	if err != nil {
-		logger.Printf("error occured in starting pubsub client: %v", err)
+		logger.Printf("error occurred in starting pubsub client: %v", err)
 	}
 
 	r.Get("/consume", func(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +49,9 @@ func main() {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Message printed to console"))
+		if _, writeErr := w.Write([]byte("Message printed to console")); writeErr != nil {
+			logger.Printf("failed to write response: %v", writeErr)
+		}
 	})
 
 	logger.Print("Server starting on :8000")

@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/d3ltmeshQ/evb/pkg/logger"
-	"github.com/d3ltmeshQ/evb/pubsub"
+	"github.com/Amisha0612/evb/pkg/logger"
+	"github.com/Amisha0612/evb/pubsub"
 )
 
 func printEvent(key string, value interface{}, headers map[string]string) {
-	//this func is just for printing the event to be pushed
+	// this func is just for printing the event to be pushed
 	eventJSON, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		fmt.Printf("Error marshalling event for key %s: %v\n", key, err)
@@ -24,15 +24,15 @@ func printEvent(key string, value interface{}, headers map[string]string) {
 func main() {
 	psClient, err := pubsub.NewClient()
 	if err != nil {
-		logger.Printf("error occured in starting pubsub client: %v", err)
+		logger.Printf("error occurred in starting pubsub client: %v", err)
 	}
 	txID := "565"
 
-	//formation of events
+	// formation of events
 	roleEvent := createRoleEvent(txID, "35620957-ce94-43ca-9640-269878c25fe0", "testRole")
 	permissionEvent := createPermissionEvent(txID, "040f0f09-894f-47b5-9032-4a03332cd7b3", "35620957-ce94-43ca-9640-269878c25fe0", "214800a5-5291-4172-9c90-9b9c263a7849", "14")
 
-	//seeing the payload before push
+	// seeing the payload before push
 	printEvent("role-key", roleEvent, nil)
 	printEvent("permission-key", permissionEvent, nil)
 
@@ -43,7 +43,6 @@ func main() {
 	permByte, _ := json.Marshal(permissionEvent)
 
 	if err := psClient.Ping(); err != nil {
-		// ctx.Logger.Errorf("ping failed! error : [%v]", err)
 		logger.Printf("ping failed! error : [%v]", err)
 		return
 	}

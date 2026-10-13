@@ -4,8 +4,9 @@ import (
 	"os"
 	"sync"
 
-	"github.com/d3ltmeshQ/evb/pkg/logger"
 	"github.com/joho/godotenv"
+
+	"github.com/Amisha0612/evb/pkg/logger"
 )
 
 // Config interface defines methods to get config values

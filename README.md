@@ -19,7 +19,7 @@ A high-performance Change Data Capture (CDC) event processing pipeline built in 
 
 ## Architecture
 
-```
+``` bash
 Kafka → Subscribe → Validate → Stitch → Queue → Relay → [HTTP|Kafka|Blob]
 ```
 
@@ -38,14 +38,14 @@ Kafka → Subscribe → Validate → Stitch → Queue → Relay → [HTTP|Kafka|
 
 ### Prerequisites
 
-- Go 1.24+
+- Go 1.27+
 - Kafka cluster
 - (Optional) Azure Blob Storage account
 
 ### Installation
 
 ```bash
-git clone https://github.com/d3ltmeshQ/evb.git
+git clone https://github.com/Amisha0612/evb.git
 cd evb
 go mod download
 ```
@@ -107,6 +107,7 @@ docker-compose down
 ```
 
 Server starts on `:8080`. Services available:
+
 - **evb**: http://localhost:8080
 - **Kafka UI**: http://localhost:8081 (for debugging Kafka topics)
 
@@ -190,21 +191,18 @@ Output (Stitched Event):
 
 ### Prerequisites
 
-- Go 1.24+
+- Go 1.27+
 - Docker & Docker Compose (for containerized development)
 - golangci-lint (for linting)
 
-### Running Tests
+### Building
 
 ```bash
-# Run all tests
-make test
+# Build locally
+make build
 
-# Run tests with coverage
-make test-coverage
-
-# Run specific package tests
-go test ./internal/queue -v
+# Build Docker image
+make docker-build
 ```
 
 ### Linting
@@ -217,14 +215,17 @@ make lint
 make install-tools
 ```
 
-### Building
+### Running Tests
 
 ```bash
-# Build locally
-make build
+# Run all tests
+make test
 
-# Build Docker image
-make docker-build
+# Run tests with coverage
+make test-coverage
+
+# Run specific package tests
+go test ./internal/queue -v
 ```
 
 ### Makefile Commands

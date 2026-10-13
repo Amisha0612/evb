@@ -7,8 +7,9 @@ import (
 	"errors"
 
 	"github.com/IBM/sarama"
-	"github.com/d3ltmeshQ/evb/internal/models"
 	goplv10 "github.com/go-playground/validator/v10"
+
+	"github.com/Amisha0612/evb/internal/models"
 )
 
 /*
@@ -58,16 +59,13 @@ func New() Controller {
 	return &validate{v10: v10}
 }
 
-func (v *validate) Validator(ctx context.Context, msg *sarama.ConsumerMessage) (*models.EventWrapper, error) {
+func (v *validate) Validator(_ context.Context, msg *sarama.ConsumerMessage) (*models.EventWrapper, error) {
 	var (
 		event       models.EventWrapper
 		msgEnvelope envelope
 	)
 
-	// err := ctx.PubSub.Bind([]byte(msg.Value), &msgEnvelope)
-	// if err != nil {
-	// 	return nil, errors.Error("unable to bind the kakfa message. error: " + err.Error())
-	// }
+	// TODO: bind msg.Value into msgEnvelope; validation currently runs on an empty envelope.
 
 	if err := v.v10.Struct(msgEnvelope); err != nil {
 		return nil, errors.New("validation failed: " + err.Error())

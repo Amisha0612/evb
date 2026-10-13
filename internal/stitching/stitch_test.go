@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/d3ltmeshQ/evb/internal/models"
-	"github.com/d3ltmeshQ/evb/pkg/config"
+	"github.com/Amisha0612/evb/internal/models"
+	"github.com/Amisha0612/evb/pkg/config"
 )
 
 func TestNew(t *testing.T) {
@@ -192,11 +192,7 @@ func TestCapturePayload(t *testing.T) {
 
 			result := capturePayload(event)
 
-			if tt.op == "c" || tt.op == "u" {
-				if result["id"] != tt.expected["id"] {
-					t.Errorf("Expected id %v, got %v", tt.expected["id"], result["id"])
-				}
-			} else if tt.op == "d" {
+			if tt.op == "c" || tt.op == "u" || tt.op == "d" {
 				if result["id"] != tt.expected["id"] {
 					t.Errorf("Expected id %v, got %v", tt.expected["id"], result["id"])
 				}

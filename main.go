@@ -11,10 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/d3ltmeshQ/evb/internal"
-	"github.com/d3ltmeshQ/evb/pkg/config"
-	"github.com/d3ltmeshQ/evb/pubsub"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/Amisha0612/evb/internal"
+	"github.com/Amisha0612/evb/pkg/config"
+	"github.com/Amisha0612/evb/pubsub"
 )
 
 var (
@@ -33,7 +34,7 @@ func main() {
 	defer cancel()
 
 	r.Get("/subscribe", func(w http.ResponseWriter, r *http.Request) {
-		subscribeHandler(w, r, cfg, ctx)
+		subscribeHandler(ctx, w, r, cfg)
 	})
 
 	r.Get("/health", healthHandler)
@@ -83,7 +84,7 @@ func main() {
 	log.Println("Server stopped gracefully")
 }
 
-func subscribeHandler(w http.ResponseWriter, _ *http.Request, cfg *config.GoDotEnvProvider, ctx context.Context) {
+func subscribeHandler(ctx context.Context, w http.ResponseWriter, _ *http.Request, cfg *config.GoDotEnvProvider) {
 	client, err := pubsub.NewClient()
 	if err != nil {
 		log.Printf("failed to create pubsub client: %v", err)
@@ -108,7 +109,9 @@ func subscribeHandler(w http.ResponseWriter, _ *http.Request, cfg *config.GoDotE
 		}()
 	})
 
-	w.Write([]byte("Subscribed and processing in background\n"))
+	if _, err := w.Write([]byte("Subscribed and processing in background\n")); err != nil {
+		log.Printf("failed to write response: %v", err)
+	}
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
@@ -125,7 +128,7 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 			health["error"] = err.Error()
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(health)
+			encodeHealth(w, health)
 			return
 		}
 		health["kafka"] = "connected"
@@ -135,5 +138,11 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(health)
+	encodeHealth(w, health)
+}
+
+func encodeHealth(w http.ResponseWriter, health map[string]interface{}) {
+	if err := json.NewEncoder(w).Encode(health); err != nil {
+		log.Printf("failed to encode health response: %v", err)
+	}
 }
