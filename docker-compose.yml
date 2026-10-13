@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # Kafka service using Bitnami image (includes Zookeeper)
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: evb-kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      # KRaft settings (no Zookeeper needed)
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Auto-create topics
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: true
+      # Allow plaintext
+      ALLOW_PLAINTEXT_LISTENER: yes
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - evb-network
+
+  # Event Bridge service
+  evb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: evb-service
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      KAFKA_HOSTS: kafka:9092
+      KAFKA_TOPIC: cdc-events
+      KAFKA_CONSUMER_GROUP_ID: evb-consumer-group
+      KAFKA_MAX_RETRY: 3
+      KAFKA_RETRY_FREQUENCY: 500
+      QUEUE_SIZE: 1000
+      SINK_CONFIG_PATH: config.yaml
+      RULESET_MAP: '{"c":"users,orders","u":"users,orders","d":"users"}'
+    volumes:
+      - ./config.yaml:/home/evb/config.yaml:ro
+      - ./configs/.env:/home/evb/configs/.env:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - evb-network
+    restart: unless-stopped
+
+  # Kafka UI for easier debugging (optional)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: evb-kafka-ui
+    ports:
+      - "8081:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: evb-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      - kafka
+    networks:
+      - evb-network
+
+volumes:
+  kafka_data:
+    driver: local
+
+networks:
+  evb-network:
+    driver: bridge

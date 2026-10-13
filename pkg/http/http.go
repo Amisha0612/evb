@@ -1,0 +1,90 @@
+package http
+
+import (
+	"bytes"
+	"context"
+	"io"
+	"net/http"
+	"net/url"
+
+	"github.com/d3ltmeshQ/evb/internal/models"
+)
+
+type HttpClientWrapper struct {
+	baseURL string
+	client  *http.Client
+}
+
+func NewHTTPClient(baseURL string, client *http.Client) *HttpClientWrapper {
+	return &HttpClientWrapper{
+		baseURL: baseURL,
+		client:  client,
+	}
+}
+
+func (h *HttpClientWrapper) buildURL(api string, params map[string]interface{}) string {
+	u, _ := url.Parse(h.baseURL + api)
+	q := u.Query()
+	for k, v := range params {
+		q.Set(k, toString(v))
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func (h *HttpClientWrapper) doRequest(ctx context.Context, method, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, h.buildURL(api, params), bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.Response{
+		Body:       respBody,
+		StatusCode: resp.StatusCode,
+	}, nil
+}
+
+func (h *HttpClientWrapper) GetWithHeaders(ctx context.Context, api string, params map[string]interface{}, headers map[string]string) (*models.Response, error) {
+	return h.doRequest(ctx, http.MethodGet, api, params, nil, headers)
+}
+
+func (h *HttpClientWrapper) PostWithHeaders(ctx context.Context, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
+	return h.doRequest(ctx, http.MethodPost, api, params, body, headers)
+}
+
+func (h *HttpClientWrapper) PutWithHeaders(ctx context.Context, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
+	return h.doRequest(ctx, http.MethodPut, api, params, body, headers)
+}
+
+func (h *HttpClientWrapper) DeleteWithHeaders(ctx context.Context, api string, body []byte, headers map[string]string) (*models.Response, error) {
+	return h.doRequest(ctx, http.MethodDelete, api, nil, body, headers)
+}
+
+func (h *HttpClientWrapper) PatchWithHeaders(ctx context.Context, api string, params map[string]interface{}, body []byte, headers map[string]string) (*models.Response, error) {
+	return h.doRequest(ctx, http.MethodPatch, api, params, body, headers)
+}
+
+// safe string conversion for query params
+func toString(v interface{}) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	default:
+		return ""
+	}
+}

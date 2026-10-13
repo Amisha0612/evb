@@ -1,0 +1,61 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bodyclose
+    - copyloopvar
+    - errcheck
+    - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - prealloc
+    - staticcheck
+    - revive
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+  settings:
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+    gocyclo:
+      min-complexity: 15
+    goimports:
+      local-prefixes:
+        - github.com/d3ltmeshQ/evb
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+    paths:
+      - examples$
+      - mocks$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/d3ltmeshQ/evb
+  exclusions:
+    generated: lax
+    paths:
+      - examples$
+      - mocks$

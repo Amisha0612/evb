@@ -1,0 +1,45 @@
+config:
+  servers:
+    # PostgreSQL server configuration
+    - name: "postgres-server"
+      sinks:
+        # HTTP webhook sinks
+        https:
+          - url: "https://api.example.com/webhook/cdc-events"
+            timeout: 5000
+            headers:
+              Content-Type: "application/json"
+              Authorization: "Bearer YOUR_TOKEN_HERE"
+          - url: "https://analytics.example.com/events"
+            timeout: 3000
+
+        # Kafka sink configuration
+        kafka:
+          brokers:
+            - "localhost:9092"
+            - "localhost:9093"
+          topic: "processed-cdc-events"
+          sasl:
+            enabled: false
+            user: ""
+            password: ""
+
+        # Azure Blob Storage sinks
+        blob:
+          - container: "cdc-events-prod"
+            account: "yourstorageaccount"
+            # Optionally configure connection string via env var: AZURE_STORAGE_CONNECTION_STRING
+
+    # MySQL server configuration
+    - name: "mysql-server"
+      sinks:
+        https:
+          - url: "https://api.example.com/mysql-events"
+            timeout: 5000
+
+        kafka:
+          brokers:
+            - "localhost:9092"
+          topic: "mysql-cdc-events"
+
+        blob: []

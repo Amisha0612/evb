@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# Build artifacts
+evb
+*.exe
+*.test
+*.out
+build/
+dist/
+
+# Dependencies
+vendor/
+
+# Environment files (use .env.example as template)
+.env
+*.local.env
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+!README.md
+
+# CI/CD
+.github/
+
+# Docker
+docker-compose.yml
+Dockerfile
+.dockerignore
