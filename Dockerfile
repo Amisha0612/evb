@@ -17,10 +17,10 @@ RUN go mod download && go mod verify
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-s -w" -o evb .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o evb .
 
 # Final stage - minimal runtime image
-FROM alpine:latest
+FROM alpine:3.22
 
 # Install ca-certificates for HTTPS calls
 RUN apk --no-cache add ca-certificates tzdata

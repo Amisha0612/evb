@@ -54,7 +54,7 @@ clean: ## Clean build artifacts
 
 install-tools: ## Install development tools
 	@echo "Installing tools..."
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 	@echo "Tools installed!"
 
 .DEFAULT_GOAL := help

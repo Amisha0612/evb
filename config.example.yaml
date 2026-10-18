@@ -1,45 +1,57 @@
+# Sink configuration. Keys match the structs in internal/relay (yaml tags).
+# Copy to config.yaml and point SINK_CONFIG_PATH at it.
 config:
   servers:
-    # PostgreSQL server configuration
+    # "name" must equal the "server" field of the incoming CDC events.
     - name: "postgres-server"
       sinks:
-        # HTTP webhook sinks
+        # HTTP sinks. method is one of GET, POST, PATCH, DELETE.
         https:
-          - url: "https://api.example.com/webhook/cdc-events"
-            timeout: 5000
+          - url: "https://api.example.com"
+            path: "/webhook/cdc-events"
+            method: "POST"
             headers:
               Content-Type: "application/json"
-              Authorization: "Bearer YOUR_TOKEN_HERE"
-          - url: "https://analytics.example.com/events"
-            timeout: 3000
+            auth:
+              clientId: "YOUR_CLIENT_ID"
+              clientSecret: "YOUR_CLIENT_SECRET"
+              keyProviderURL: "https://auth.example.com/oauth/token"
+              scopes: ["events.write"]
 
-        # Kafka sink configuration
+        # Kafka sink: every stitched event is published to each topic.
+        # Leave hosts/topics empty to disable the Kafka sink for this server.
         kafka:
-          brokers:
+          hosts:
             - "localhost:9092"
-            - "localhost:9093"
-          topic: "processed-cdc-events"
-          sasl:
-            enabled: false
-            user: ""
-            password: ""
+          topics:
+            - "processed-cdc-events"
+          maxRetry: 3
+          retryFrequency: 500 # milliseconds
+          # username / password enable SASL/PLAIN when username is set
+          username: ""
+          password: ""
 
-        # Azure Blob Storage sinks
+        # Azure Blob Storage sinks: one JSON blob per stitched event.
         blob:
-          - container: "cdc-events-prod"
-            account: "yourstorageaccount"
-            # Optionally configure connection string via env var: AZURE_STORAGE_CONNECTION_STRING
+          - storageName: "yourstorageaccount"
+            container: "cdc-events"
+            serviceUrl: "https://yourstorageaccount.blob.core.windows.net"
+            pathPrefix: "events/"
+            sasToken: "?sv=..." # keep real tokens out of version control
 
-    # MySQL server configuration
     - name: "mysql-server"
       sinks:
         https:
-          - url: "https://api.example.com/mysql-events"
-            timeout: 5000
-
+          - url: "https://api.example.com"
+            path: "/mysql-events"
+            method: "POST"
+            auth:
+              clientId: "YOUR_CLIENT_ID"
+              clientSecret: "YOUR_CLIENT_SECRET"
+              keyProviderURL: "https://auth.example.com/oauth/token"
         kafka:
-          brokers:
+          hosts:
             - "localhost:9092"
-          topic: "mysql-cdc-events"
-
+          topics:
+            - "mysql-cdc-events"
         blob: []
