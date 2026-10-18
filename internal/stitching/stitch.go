@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Amisha0612/evb/internal/models"
 	"github.com/Amisha0612/evb/pkg/config"
@@ -15,11 +16,18 @@ type Controller interface {
 	Aggregate(context.Context, *models.EventWrapper) *models.StitchedEvent
 }
 
+// defaultTTL is how long a transaction is remembered after its last event. Incomplete
+// transactions are dropped after this, and completed ones are kept this long so that
+// redelivered Kafka messages are still recognised as duplicates.
+const defaultTTL = 10 * time.Minute
+
 type stitch struct {
 	ruleset map[string]string
+	ttl     time.Duration
 	buffer  struct {
-		mu   sync.Mutex
-		data map[float64]*models.StitchedEvent
+		mu      sync.Mutex
+		data    map[float64]*models.StitchedEvent
+		touched map[float64]time.Time
 	}
 }
 
@@ -33,15 +41,31 @@ func New(_ context.Context, cfg *config.GoDotEnvProvider) Controller {
 		rs = make(map[string]string)
 	}
 
-	return &stitch{
-		ruleset: rs,
-		buffer: struct {
-			mu   sync.Mutex
-			data map[float64]*models.StitchedEvent
-		}{
-			mu:   sync.Mutex{},
-			data: make(map[float64]*models.StitchedEvent),
-		},
+	ttl := defaultTTL
+
+	if v := cfg.Get("STITCH_TTL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			ttl = d
+		} else {
+			logger.Errorf("invalid STITCH_TTL %q, using %s", v, defaultTTL)
+		}
+	}
+
+	s := &stitch{ruleset: rs, ttl: ttl}
+	s.buffer.data = make(map[float64]*models.StitchedEvent)
+	s.buffer.touched = make(map[float64]time.Time)
+
+	return s
+}
+
+// evictExpired drops transactions that have not seen an event within the TTL.
+// The caller must hold s.buffer.mu.
+func (s *stitch) evictExpired(now time.Time) {
+	for txID, last := range s.buffer.touched {
+		if now.Sub(last) > s.ttl {
+			delete(s.buffer.data, txID)
+			delete(s.buffer.touched, txID)
+		}
 	}
 }
 
@@ -49,6 +73,10 @@ func New(_ context.Context, cfg *config.GoDotEnvProvider) Controller {
 func (s *stitch) Aggregate(_ context.Context, event *models.EventWrapper) *models.StitchedEvent {
 	s.buffer.mu.Lock()
 	defer s.buffer.mu.Unlock()
+
+	now := time.Now()
+	s.evictExpired(now)
+	s.buffer.touched[event.TxID] = now
 
 	payload, exists := s.buffer.data[event.TxID]
 

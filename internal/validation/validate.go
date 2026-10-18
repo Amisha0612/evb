@@ -65,7 +65,13 @@ func (v *validate) Validator(_ context.Context, msg *sarama.ConsumerMessage) (*m
 		msgEnvelope envelope
 	)
 
-	// TODO: bind msg.Value into msgEnvelope; validation currently runs on an empty envelope.
+	if msg == nil {
+		return nil, errors.New("kafka message is nil")
+	}
+
+	if err := json.Unmarshal(msg.Value, &msgEnvelope); err != nil {
+		return nil, errors.New("unable to bind the kafka message. error: " + err.Error())
+	}
 
 	if err := v.v10.Struct(msgEnvelope); err != nil {
 		return nil, errors.New("validation failed: " + err.Error())

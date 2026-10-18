@@ -12,10 +12,9 @@ var (
 )
 
 type Logger struct {
-	out    io.Writer
-	level  level
-	mutex  *sync.RWMutex
-	System map[string]interface{} `json:"system"`
+	out   io.Writer
+	level level
+	mutex *sync.RWMutex
 }
 
 func NewLogger() *Logger {
@@ -34,8 +33,6 @@ func (k *Logger) emit(lvl level, output func() string) {
 	if lvl > currentLevel {
 		return
 	}
-
-	k.System = fetchSystemStats()
 
 	msg := fmt.Sprintf("\033[%dm[%s] %s\033[0m\n", lvl.colorCode(), lvl.String(), output())
 	_, _ = fmt.Fprint(k.out, msg)
@@ -124,6 +121,12 @@ func (k *Logger) Update(level string) {
 		k.level = newLevel
 		k.mutex.Unlock()
 	}
+}
+
+// Stats returns a snapshot of runtime metrics. It is computed on demand because
+// reading memory statistics briefly stops the world and must not run on every log call.
+func (k *Logger) Stats() map[string]interface{} {
+	return fetchSystemStats()
 }
 
 func (k *Logger) Level() string {

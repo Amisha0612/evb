@@ -65,12 +65,19 @@ func (b *bridge) relayWorker(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Millisecond)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		if b.pipe.IsEmpty() {
+	for {
+		select {
+		case <-ctx.Done():
 			return
+		case <-ticker.C:
 		}
 
-		if err := b.relay.Transport(ctx, b.pipe.Dequeue()); err != nil {
+		event := b.pipe.Dequeue()
+		if event == nil {
+			continue
+		}
+
+		if err := b.relay.Transport(ctx, event); err != nil {
 			logger.Errorf("relay failed! error : [%v]", err)
 		}
 	}

@@ -3,19 +3,20 @@ package logger
 import (
 	"os"
 	"runtime"
+	"sync"
 )
 
-//nolint:gochecknoglobals // the usage of the global variable is required
-var hostname string
+var (
+	hostnameOnce sync.Once
+	hostname     string
+)
 
 func fetchSystemStats() map[string]interface{} {
 	var m runtime.MemStats
 
 	runtime.ReadMemStats(&m)
 
-	if hostname == "" {
-		hostname, _ = os.Hostname()
-	}
+	hostnameOnce.Do(func() { hostname, _ = os.Hostname() })
 
 	stats := make(map[string]interface{})
 	stats["alloc"] = m.Alloc

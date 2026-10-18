@@ -16,7 +16,7 @@ func Example() {
 	Update("DEBUG") // Change level at runtime
 	Debugf("Now debug logs are also visible")
 
-	stats := defaultLogger.System
+	stats := defaultLogger.Stats()
 	jsonBytes, err := json.MarshalIndent(stats, "", "  ")
 	if err != nil {
 		Fatal(err)
@@ -25,7 +25,7 @@ func Example() {
 	Infof("System Stats")
 	fmt.Println(string(jsonBytes))
 
-	key, val := EncryptWithKeyID("amishasharma@gmail.com")
+	key, val := EncryptWithKeyID("user@example.com")
 	Infof("User email (encrypted): key=%s value=%s", key, val)
 
 	Fatalf("Fatal error: shutting down")
