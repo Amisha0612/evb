@@ -31,4 +31,8 @@ type StitchedEvent struct {
 	Server     string                   `json:"server"`
 	IsStitched bool                     `json:"isStitched"`
 	Tables     map[string]TableSnapshot `json:"tables"`
+
+	// Messages are the Kafka messages this event was built from. They are acknowledged
+	// once the event has been relayed. They are not part of the serialised event.
+	Messages []*sarama.ConsumerMessage `json:"-"`
 }

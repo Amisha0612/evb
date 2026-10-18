@@ -23,8 +23,14 @@ import (
 // Subscribe returns the next message or an error
 // Publish sends a message to the first configured topic
 // Close shuts down the consumer group
+//
+// Ack tells the client that a message returned by Subscribe has been fully handled
+// (relayed, or deliberately dropped). Only then is its offset eligible to be
+// committed, so a message that was still in flight when the process stopped is read
+// again on restart instead of being lost.
 type Client interface {
 	Subscribe(ctx context.Context) (*sarama.ConsumerMessage, error)
+	Ack(msg *sarama.ConsumerMessage)
 	Publish(key, value []byte) error
 	Close() error
 	Ping() error
@@ -37,14 +43,40 @@ type KafkaClient struct {
 	topics   []string
 	msgChan  chan *sarama.ConsumerMessage
 	once     sync.Once
-	closeMu  sync.Mutex
-	closed   bool
 	producer sarama.SyncProducer
+
+	closeMu sync.Mutex
+	closed  bool
+	done    chan struct{} // closed by Close; unblocks everything waiting on msgChan
+	cancel  context.CancelFunc
+	ctx     context.Context
+
+	tracker *offsetTracker
+
+	sessMu  sync.Mutex
+	session sarama.ConsumerGroupSession // current consumer group session, nil between sessions
 
 	// stored to support Ping/HealthCheck-like behavior
 	brokers          []string
 	config           *sarama.Config
 	accessibleBroker string
+}
+
+func newKafkaClient(consumer sarama.ConsumerGroup, producer sarama.SyncProducer, topics, brokers []string, cfg *sarama.Config, buffer int) *KafkaClient {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	return &KafkaClient{
+		consumer: consumer,
+		producer: producer,
+		topics:   topics,
+		msgChan:  make(chan *sarama.ConsumerMessage, buffer),
+		done:     make(chan struct{}),
+		ctx:      ctx,
+		cancel:   cancel,
+		tracker:  newOffsetTracker(),
+		brokers:  brokers,
+		config:   cfg,
+	}
 }
 
 type brokersErr struct{}
@@ -108,6 +140,9 @@ func NewClient() (Client, error) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_1_0_0
 	config.Consumer.Offsets.Initial = sarama.OffsetOldest
+	// Offsets are marked by Ack, after a message was handled; the periodic auto-commit
+	// then flushes whatever has been marked.
+	config.Consumer.Offsets.AutoCommit.Enable = true
 
 	// Producer settings
 	config.Producer.Return.Successes = true
@@ -137,17 +172,7 @@ func NewClient() (Client, error) {
 		return nil, err
 	}
 
-	kc := &KafkaClient{
-		consumer: consumer,
-		topics:   topics,
-		msgChan:  make(chan *sarama.ConsumerMessage, 256),
-		producer: producer,
-
-		// store brokers/config for Ping/HealthCheck
-		brokers: brokers,
-		config:  config,
-	}
-	return kc, nil
+	return newKafkaClient(consumer, producer, topics, brokers, config, 256), nil
 }
 
 // Subscribe returns the next message or an error, blocking until one is available
@@ -159,21 +184,55 @@ func (k *KafkaClient) Subscribe(ctx context.Context) (*sarama.ConsumerMessage, e
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case msg, ok := <-k.msgChan:
-		if !ok {
-			return nil, errors.New("message channel closed")
-		}
+	case <-k.done:
+		return nil, ErrClosed
+	case msg := <-k.msgChan:
 		return msg, nil
 	}
 }
 
-// runConsumerLoop continually consumes from Kafka and pushes into msgChan
+// ErrClosed is returned by Subscribe once the client has been closed.
+var ErrClosed = errors.New("pubsub client is closed")
+
+// Ack marks the message's offset as handled. The committed position only moves
+// past an offset once every earlier message of the same partition is handled too.
+func (k *KafkaClient) Ack(msg *sarama.ConsumerMessage) {
+	if msg == nil {
+		return
+	}
+
+	next, advanced := k.tracker.Done(msg.Topic, msg.Partition, msg.Offset)
+	if !advanced {
+		return
+	}
+
+	k.sessMu.Lock()
+	defer k.sessMu.Unlock()
+
+	// After a rebalance the partition belongs to another consumer, which resumes from
+	// the last committed offset; marking from a dead session would be meaningless.
+	if k.session != nil {
+		k.session.MarkOffset(msg.Topic, msg.Partition, next, "")
+	}
+}
+
+// runConsumerLoop keeps joining the consumer group until the client is closed.
 func (k *KafkaClient) runConsumerLoop() {
-	handler := consumerGroupHandler{msgChan: k.msgChan}
-	for {
-		if err := k.consumer.Consume(context.Background(), k.topics, handler); err != nil {
-			time.Sleep(1 * time.Second)
-			continue
+	handler := &consumerGroupHandler{client: k}
+
+	for k.ctx.Err() == nil {
+		if err := k.consumer.Consume(k.ctx, k.topics, handler); err != nil {
+			if k.ctx.Err() != nil || errors.Is(err, sarama.ErrClosedConsumerGroup) {
+				return
+			}
+
+			logger.Errorf("kafka consume error: %v", err)
+
+			select {
+			case <-k.ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
 		}
 	}
 }
@@ -239,23 +298,66 @@ func (k *KafkaClient) Close() error {
 		return nil
 	}
 	k.closed = true
-	close(k.msgChan)
+
+	// Signal first: msgChan is never closed, because a claim may still be sending on
+	// it and a send on a closed channel panics. done and the context release them.
+	close(k.done)
+	k.cancel()
+
 	producerErr := k.producer.Close()
 
 	return errors.Join(producerErr, k.consumer.Close())
 }
 
-// consumerGroupHandler forwards messages to msgChan
+// consumerGroupHandler forwards messages to the client's channel. It does not mark an
+// offset itself; the client does that when the message is acknowledged.
 type consumerGroupHandler struct {
-	msgChan chan<- *sarama.ConsumerMessage
+	client *KafkaClient
 }
 
-func (h consumerGroupHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
-func (h consumerGroupHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
-func (h consumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	for msg := range claim.Messages() {
-		h.msgChan <- msg
-		sess.MarkMessage(msg, "")
-	}
+func (h *consumerGroupHandler) Setup(sess sarama.ConsumerGroupSession) error {
+	h.client.sessMu.Lock()
+	h.client.session = sess
+	h.client.sessMu.Unlock()
+
 	return nil
+}
+
+func (h *consumerGroupHandler) Cleanup(sess sarama.ConsumerGroupSession) error {
+	h.client.sessMu.Lock()
+	h.client.session = nil
+	h.client.sessMu.Unlock()
+
+	// Offsets of messages still in flight belong to the old assignment.
+	h.client.tracker.Reset()
+
+	// Flush what was acknowledged so far before the partitions move on.
+	sess.Commit()
+
+	return nil
+}
+
+func (h *consumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for {
+		select {
+		case <-sess.Context().Done():
+			return nil
+		case <-h.client.done:
+			return nil
+		case msg, ok := <-claim.Messages():
+			if !ok {
+				return nil
+			}
+
+			h.client.tracker.Deliver(msg.Topic, msg.Partition, msg.Offset)
+
+			select {
+			case h.client.msgChan <- msg:
+			case <-sess.Context().Done():
+				return nil
+			case <-h.client.done:
+				return nil
+			}
+		}
+	}
 }

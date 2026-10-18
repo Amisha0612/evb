@@ -25,9 +25,16 @@ var (
 	subscribeMu  sync.Mutex // guards bridge and pubsubClient
 	startTime    time.Time
 
-	// newClient is a variable so tests can run without a Kafka cluster.
+	// newClient and newBridge are variables so tests can run without Kafka or sinks.
 	newClient = pubsub.NewClient
+	newBridge = func(ctx context.Context, cfg *config.GoDotEnvProvider, client pubsub.Client) internal.Controller {
+		return internal.New(ctx, cfg, client)
+	}
 )
+
+// maxInFlight bounds how many Kafka messages are processed at the same time. Without
+// it every message got its own goroutine, so a slow sink let them pile up without limit.
+const maxInFlight = 64
 
 func main() {
 	startTime = time.Now()
@@ -118,26 +125,55 @@ func startSubscription(ctx context.Context, cfg *config.GoDotEnvProvider) error 
 	}
 
 	pubsubClient = client
-	bridge = internal.New(ctx, cfg)
-	b := bridge
+	bridge = newBridge(ctx, cfg, client)
 
-	go func() {
-		for ctx.Err() == nil {
-			msg, err := client.Subscribe(ctx)
-			if err != nil {
-				if ctx.Err() == nil {
-					log.Printf("subscription error: %v", err)
-					time.Sleep(time.Second)
-				}
-
-				continue
-			}
-
-			go b.Process(ctx, msg)
-		}
-	}()
+	go consume(ctx, client, bridge)
 
 	return nil
+}
+
+// consume feeds Kafka messages to the bridge until the context ends or the client is
+// closed. At most maxInFlight messages are processed concurrently; when they are all
+// busy the loop waits, which in turn stops it reading from Kafka.
+func consume(ctx context.Context, client pubsub.Client, b internal.Controller) {
+	slots := make(chan struct{}, maxInFlight)
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	for ctx.Err() == nil {
+		msg, err := client.Subscribe(ctx)
+		if err != nil {
+			if ctx.Err() != nil || errors.Is(err, pubsub.ErrClosed) {
+				return
+			}
+
+			log.Printf("subscription error: %v", err)
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
+
+			continue
+		}
+
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			defer func() { <-slots }()
+
+			b.Process(ctx, msg)
+		}()
+	}
 }
 
 // currentClient returns the Kafka client once /subscribe has created it, or nil before that.

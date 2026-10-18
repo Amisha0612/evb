@@ -21,6 +21,15 @@ func newFakePipe() *fakePipe {
 
 func (f *fakePipe) Enqueue(e *models.StitchedEvent) { f.events <- e }
 
+func (f *fakePipe) EnqueueContext(ctx context.Context, e *models.StitchedEvent) error {
+	select {
+	case f.events <- e:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (f *fakePipe) Dequeue() *models.StitchedEvent {
 	select {
 	case e := <-f.events:

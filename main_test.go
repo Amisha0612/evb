@@ -24,15 +24,25 @@ type fakeClient struct {
 	pingErr        error
 	subscribeCalls atomic.Int64
 	closeCalls     atomic.Int64
+	acked          atomic.Int64
+
+	// closedAfter, when set, makes Subscribe return pubsub.ErrClosed instead of blocking.
+	closed atomic.Bool
 }
 
 func (f *fakeClient) Subscribe(ctx context.Context) (*sarama.ConsumerMessage, error) {
 	f.subscribeCalls.Add(1)
 
+	if f.closed.Load() {
+		return nil, pubsub.ErrClosed
+	}
+
 	<-ctx.Done()
 
 	return nil, ctx.Err()
 }
+
+func (f *fakeClient) Ack(*sarama.ConsumerMessage) { f.acked.Add(1) }
 
 func (f *fakeClient) Publish(_, _ []byte) error { return nil }
 func (f *fakeClient) Ping() error               { return f.pingErr }
@@ -233,5 +243,115 @@ func TestSubscribeHandlerReportsClientFailure(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)
+	}
+}
+
+// Once the Kafka client is closed, Subscribe fails forever. The loop must stop rather
+// than spin and log an error every second until the process exits.
+func TestSubscriptionLoopStopsWhenTheClientIsClosed(t *testing.T) {
+	cfg := resetState(t)
+
+	fake := &fakeClient{}
+	fake.closed.Store(true)
+
+	newClient = func() (pubsub.Client, error) { return fake, nil }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := startSubscription(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	first := fake.subscribeCalls.Load()
+	if first == 0 {
+		t.Fatal("the loop never called Subscribe")
+	}
+
+	time.Sleep(1300 * time.Millisecond) // longer than the loop's one second retry pause
+
+	if second := fake.subscribeCalls.Load(); second != first {
+		t.Errorf("the loop kept calling Subscribe on a closed client: %d then %d calls", first, second)
+	}
+}
+
+// A slow message must not let the number of in-flight messages grow without bound.
+func TestInFlightMessagesAreBounded(t *testing.T) {
+	cfg := resetState(t)
+
+	var (
+		inFlight, peak atomic.Int64
+		release        = make(chan struct{})
+		msgs           = make(chan *sarama.ConsumerMessage)
+	)
+
+	fake := &streamClient{msgs: msgs}
+	newClient = func() (pubsub.Client, error) { return fake, nil }
+
+	prev := newBridge
+	newBridge = func(context.Context, *config.GoDotEnvProvider, pubsub.Client) internal.Controller {
+		return processFunc(func(context.Context, *sarama.ConsumerMessage) {
+			n := inFlight.Add(1)
+			for {
+				p := peak.Load()
+				if n <= p || peak.CompareAndSwap(p, n) {
+					break
+				}
+			}
+
+			<-release
+			inFlight.Add(-1)
+		})
+	}
+
+	t.Cleanup(func() { newBridge = prev })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := startSubscription(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		for i := 0; ; i++ {
+			select {
+			case msgs <- &sarama.ConsumerMessage{Offset: int64(i)}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+
+	if got := peak.Load(); got > maxInFlight {
+		t.Errorf("%d messages were processed at once, the limit is %d", got, maxInFlight)
+	}
+
+	if got := peak.Load(); got < 2 {
+		t.Errorf("messages should be processed concurrently, peak was %d", got)
+	}
+
+	close(release)
+}
+
+type processFunc func(context.Context, *sarama.ConsumerMessage)
+
+func (f processFunc) Process(ctx context.Context, m *sarama.ConsumerMessage) { f(ctx, m) }
+
+type streamClient struct {
+	fakeClient
+	msgs chan *sarama.ConsumerMessage
+}
+
+func (s *streamClient) Subscribe(ctx context.Context) (*sarama.ConsumerMessage, error) {
+	select {
+	case m := <-s.msgs:
+		return m, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }

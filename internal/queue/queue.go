@@ -10,6 +10,7 @@ import (
 
 type Controller interface {
 	Enqueue(*models.StitchedEvent)
+	EnqueueContext(context.Context, *models.StitchedEvent) error
 	Dequeue() *models.StitchedEvent
 	IsEmpty() bool
 	IsFull() bool
@@ -35,6 +36,21 @@ func New(_ context.Context, cfg *config.GoDotEnvProvider) Controller {
 // Enqueue adds or pushes an event to the queue.
 func (c *pipe) Enqueue(event *models.StitchedEvent) {
 	c.queue <- event
+}
+
+// EnqueueContext adds an event, waiting while the queue is full instead of dropping it.
+// It returns the context error if ctx ends first, in which case nothing was enqueued.
+func (c *pipe) EnqueueContext(ctx context.Context, event *models.StitchedEvent) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	select {
+	case c.queue <- event:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Dequeue removes and returns the next event from the queue.
