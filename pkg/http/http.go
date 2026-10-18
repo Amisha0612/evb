@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -53,10 +54,41 @@ func (h *ClientWrapper) doRequest(ctx context.Context, method, api string, param
 		return nil, err
 	}
 
-	return &models.Response{
+	out := &models.Response{
 		Body:       respBody,
 		StatusCode: resp.StatusCode,
-	}, nil
+	}
+
+	// The response is returned even on failure so callers can inspect the body.
+	if resp.StatusCode >= http.StatusBadRequest {
+		return out, &StatusError{Method: method, URL: req.URL.Redacted(), StatusCode: resp.StatusCode}
+	}
+
+	return out, nil
+}
+
+// StatusError is returned when the server answers with a 4xx or 5xx status.
+type StatusError struct {
+	Method     string
+	URL        string
+	StatusCode int
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("%s %s: HTTP %d %s", e.Method, e.URL, e.StatusCode, http.StatusText(e.StatusCode))
+}
+
+// Retryable reports whether sending the same request again can succeed: server
+// errors, timeouts and rate limiting can, while other client errors cannot.
+func (e *StatusError) Retryable() bool {
+	switch {
+	case e.StatusCode >= http.StatusInternalServerError:
+		return true
+	case e.StatusCode == http.StatusRequestTimeout, e.StatusCode == http.StatusTooManyRequests:
+		return true
+	default:
+		return false
+	}
 }
 
 func (h *ClientWrapper) GetWithHeaders(ctx context.Context, api string, params map[string]interface{}, headers map[string]string) (*models.Response, error) {

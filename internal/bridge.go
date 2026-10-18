@@ -72,9 +72,17 @@ func (b *bridge) relayWorker(ctx context.Context) {
 		case <-ticker.C:
 		}
 
+		b.drain(ctx)
+	}
+}
+
+// drain relays everything that is queued right now. The tick only sets how often
+// the queue is polled; it does not cap throughput.
+func (b *bridge) drain(ctx context.Context) {
+	for ctx.Err() == nil {
 		event := b.pipe.Dequeue()
 		if event == nil {
-			continue
+			return
 		}
 
 		if err := b.relay.Transport(ctx, event); err != nil {

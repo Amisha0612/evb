@@ -71,11 +71,35 @@ func (h *https) GetID() string {
 }
 
 func (h *https) Transport(ctx context.Context, payload any) (any, error) {
+	resp, err := h.send(ctx, payload)
+	if err != nil {
+		return resp, classifyHTTPError(err)
+	}
+
+	return resp, nil
+}
+
+// classifyHTTPError marks failures that retrying cannot fix as permanent. Network
+// errors and retryable statuses (5xx, 408, 429) stay as they are.
+func classifyHTTPError(err error) error {
+	if isPermanent(err) {
+		return err
+	}
+
+	var se *http.StatusError
+	if errors.As(err, &se) && !se.Retryable() {
+		return permanent(err)
+	}
+
+	return err
+}
+
+func (h *https) send(ctx context.Context, payload any) (any, error) {
 	var body []byte
 	if payload != nil {
 		b, err := json.Marshal(payload)
 		if err != nil {
-			return nil, err
+			return nil, permanent(err)
 		}
 		body = b
 	}
@@ -114,6 +138,6 @@ func (h *https) Transport(ctx context.Context, payload any) (any, error) {
 		logger.Infof("HTTP response: %v", resp)
 		return resp, nil
 	default:
-		return nil, errors.New("unsupported HTTP method: " + h.Method)
+		return nil, permanent(errors.New("unsupported HTTP method: " + h.Method))
 	}
 }

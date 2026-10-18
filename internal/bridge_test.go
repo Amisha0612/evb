@@ -16,7 +16,7 @@ type fakePipe struct {
 }
 
 func newFakePipe() *fakePipe {
-	return &fakePipe{events: make(chan *models.StitchedEvent, 16)}
+	return &fakePipe{events: make(chan *models.StitchedEvent, 128)}
 }
 
 func (f *fakePipe) Enqueue(e *models.StitchedEvent) { f.events <- e }
@@ -138,5 +138,30 @@ func TestRelayWorkerStopsWhenContextIsCancelled(t *testing.T) {
 	case <-done:
 	case <-time.After(waitTimeout):
 		t.Fatal("relayWorker did not stop after the context was cancelled")
+	}
+}
+
+// A backlog must be drained as fast as the sinks accept it, not one event per tick.
+func TestRelayWorkerDrainsABacklogWithinOneTick(t *testing.T) {
+	pipe := newFakePipe()
+	relay := &fakeRelay{relayed: make(chan *models.StitchedEvent, 64)}
+	b := &bridge{pipe: pipe, relay: relay}
+
+	const backlog = 50
+
+	for i := 0; i < backlog; i++ {
+		pipe.Enqueue(&models.StitchedEvent{TxID: float64(i)})
+	}
+
+	startWorker(t, b)
+
+	deadline := time.After(300 * time.Millisecond)
+
+	for got := 0; got < backlog; got++ {
+		select {
+		case <-relay.relayed:
+		case <-deadline:
+			t.Fatalf("only %d of %d queued events were relayed within 300ms", got, backlog)
+		}
 	}
 }
