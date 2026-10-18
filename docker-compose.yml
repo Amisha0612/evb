@@ -48,11 +48,14 @@ services:
       KAFKA_RETRY_FREQUENCY: 500
       QUEUE_SIZE: 1000
       SINK_CONFIG_PATH: config.yaml
+      # Events a sink rejected are appended here; the volume keeps them across restarts
+      DEAD_LETTER_PATH: /data/dead-letter.jsonl
       RULESET_MAP: '{"c":"users,orders","u":"users,orders","d":"users"}'
-    # The image ships config.example.yaml as config.yaml. To use your own sinks,
-    # create config.yaml next to this file and uncomment:
-    # volumes:
-    #   - ./config.yaml:/home/evb/config.yaml:ro
+    volumes:
+      - dead_letter:/data
+      # The image ships config.example.yaml as config.yaml. To use your own sinks,
+      # create config.yaml next to this file and uncomment:
+      # - ./config.yaml:/home/evb/config.yaml:ro
     depends_on:
       kafka:
         condition: service_healthy
@@ -83,6 +86,8 @@ services:
 
 volumes:
   kafka_data:
+    driver: local
+  dead_letter:
     driver: local
 
 networks:

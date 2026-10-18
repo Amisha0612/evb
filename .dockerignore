@@ -39,3 +39,6 @@ Thumbs.db
 docker-compose.yml
 Dockerfile
 .dockerignore
+
+# Runtime output
+dead-letter.jsonl

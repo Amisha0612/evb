@@ -27,7 +27,8 @@ RUN apk --no-cache add ca-certificates tzdata
 
 # Create non-root user
 RUN addgroup -g 1000 evb && \
-    adduser -D -u 1000 -G evb evb
+    adduser -D -u 1000 -G evb evb && \
+    mkdir /data && chown evb:evb /data
 
 # Set working directory
 WORKDIR /home/evb

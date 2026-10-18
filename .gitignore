@@ -36,3 +36,6 @@ go.work.sum
 ./.DS_Store
 # Claude Code local settings
 .claude/
+
+# Failed-delivery records written by the relay
+dead-letter.jsonl
