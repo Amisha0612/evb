@@ -6,9 +6,11 @@ A Change Data Capture (CDC) event processing pipeline written in Go. It consumes
 
 - **Event validation** - Schema and per-operation rules for create, update, delete and read events
 - **Transaction stitching** - Collects the events of one transaction (across tables) until a configurable set of tables has arrived, and suppresses duplicates
-- **Multi-sink relay** - Per-server routing to HTTPS endpoints (OAuth2 client credentials), Kafka topics and Azure Blob Storage
+- **Multi-sink relay** - Per-server routing to HTTPS endpoints (OAuth2 client credentials), Kafka topics and Azure Blob Storage. Sinks are independent: one that fails does not stop the others
+- **Retries and dead-letter file** - Failed deliveries are retried with exponential backoff and jitter; events a sink still rejects are appended to a JSON Lines file for replay
+- **At-least-once delivery** - Kafka offsets are committed only after an event has been relayed (or dead-lettered)
 - **Kafka pub/sub** - Consumer-group subscriber and producer with a connectivity check
-- **Buffered queue** - Fixed-size queue between stitching and relay; events are dropped with an error log when it is full
+- **Backpressure** - Fixed-size queue between stitching and relay; when it is full the consumer waits instead of dropping events, and at most 64 messages are processed at once
 - **HTTP server** - Chi-based API to start the subscription and report health
 - **Graceful shutdown** - Signal handling, then context cancellation, then the Kafka client is closed
 - **Logger** - Leveled, colour-coded logger with on-demand runtime stats
@@ -73,6 +75,10 @@ Values are loaded from `configs/.<ENV>.env` (default `configs/.local.env`) and t
 | `SINK_CONFIG_PATH` | `config.yaml` | Path of the sink configuration file |
 | `RULESET_MAP` | unset | JSON map of operation to the tables a transaction needs before it is stitched, e.g. `{"c":"users,orders","u":"users,orders","d":"users"}` |
 | `STITCH_TTL` | `10m` | How long a transaction is remembered after its last event (Go duration) |
+| `RELAY_MAX_ATTEMPTS` | `3` | Delivery attempts per sink before the event is dead-lettered |
+| `RELAY_RETRY_BASE` | `200ms` | First retry delay; it doubles each attempt, with jitter |
+| `RELAY_RETRY_MAX` | `5s` | Upper bound for a single retry delay |
+| `DEAD_LETTER_PATH` | `dead-letter.jsonl` | File that receives events a sink did not accept; `off` disables it |
 | `ENV` | `local` | Selects the `configs/.<ENV>.env` override file |
 | `ENCRYPTOR_KEY`, `ENCRYPTOR_KEY_ID` | unset | AES-GCM key (16, 24 or 32 bytes) for `logger.Encrypted`; a key of any other length stops the process at startup |
 
@@ -185,8 +191,27 @@ evb/
 1. **Subscribe** - The Kafka consumer group reads the configured topics.
 2. **Validate** - `op` must be `c`, `u`, `d` or `r`; `ts_ms`, `source.txId`, `source.lsn`, `source.table` and `source.server` are required. Creates and reads need `after`, deletes need `before`, and updates need both and they must differ.
 3. **Stitch** - Events with the same `txId` are collected until every table that `RULESET_MAP` lists for the operation has arrived. Incomplete transactions are dropped after `STITCH_TTL`; finished ones are remembered for the same time so a redelivered event is ignored.
-4. **Queue** - Stitched events wait in a channel-based queue.
-5. **Relay** - A worker takes one event from the queue every 30 ms and sends it to each sink configured for the event's server.
+4. **Queue** - Stitched events wait in a bounded channel. When it is full, processing waits, which stops the consumer from reading further.
+5. **Relay** - A worker polls the queue every 30 ms and relays everything that is waiting, to each sink configured for the event's server.
+6. **Acknowledge** - Once the event is settled, the Kafka messages it was built from are acknowledged and their offsets committed.
+
+### Delivery guarantees
+
+Delivery is **at least once**. A Kafka offset is committed only after the messages before it have been dealt with, so a crash re-reads whatever was in flight:
+
+| Situation | What happens | Offset |
+|---|---|---|
+| Event relayed to every sink | Done | Committed |
+| A sink fails | Retried with exponential backoff and jitter, up to `RELAY_MAX_ATTEMPTS`; other sinks are not affected | |
+| Retries exhausted, or the sink rejects the event permanently (HTTP 4xx other than 408 and 429, unsupported method) | One line is appended to the dead-letter file with the event, sink and error | Committed |
+| Dead-letter file cannot be written, or the process is shutting down mid-retry | Nothing is recorded | **Not committed**, the message is read again on restart |
+| Message fails validation | Logged and skipped, since it would fail again | Committed |
+| Part of a transaction that has not completed | Held in memory | Not committed while it waits. Committed once the transaction is stitched and relayed, or once it expires after `STITCH_TTL` and is given up on |
+| Redelivered event of a transaction that was already stitched | Ignored as a duplicate | Committed |
+
+Because of the retry and re-read paths a sink can receive the same event more than once. Receivers should treat `txId` plus `server` as an idempotency key.
+
+Each line of the dead-letter file is a JSON object with `failedAt`, `server`, `sinkType`, `sinkId`, `attempts`, `error` and the full `event`, so it can be replayed once the sink is healthy. The file is not rotated.
 
 ## Event Format
 
@@ -284,9 +309,10 @@ make install-tools  # Install golangci-lint
 
 ## Known Limitations
 
-- The relay worker sends one event per 30 ms tick, roughly 33 events per second per instance.
-- A sink failure stops delivery of that event to the sinks after it. There are no retries and no dead-letter queue yet.
-- Kafka offsets are marked as soon as a message is handed to the in-memory channel, before it is validated or relayed, so events in flight are lost if the process stops.
+- Delivery is at least once, not exactly once: expect occasional duplicates after a crash or a retry.
+- The dead-letter file is written locally, is not rotated, and there is no built-in replay command. Replaying means reading the file and re-sending the `event` of each line.
+- Incomplete transactions are held in memory. If the process stops, they are rebuilt from Kafka on restart, so the committed offset stays behind the oldest unfinished transaction.
+- A transaction that does not complete within `STITCH_TTL` is dropped without being relayed.
 
 ## Dependencies
 
